@@ -1,0 +1,7 @@
+services:
+  savingchallenge-privacy:
+    build: .
+    container_name: savingchallenge-privacy
+    restart: always
+    ports:
+      - "8086:80"
