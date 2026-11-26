@@ -12,6 +12,7 @@ class PreferencesService {
   static const String keyDailyReminderEnabled = 'daily_reminder_enabled';
   static const String keyReminderHour = 'reminder_hour';
   static const String keyReminderMinute = 'reminder_minute';
+  static const String keyAdFreeUntilMs = 'ad_free_until_ms';
 
   final SharedPreferences _prefs;
 
@@ -78,6 +79,38 @@ class PreferencesService {
     await _prefs.setBool(keyDailyReminderEnabled, enabled);
     await _prefs.setInt(keyReminderHour, hour);
     await _prefs.setInt(keyReminderMinute, minute);
+  }
+
+  // Ad-Free Rewarded Pass (24h per rewarded video, capped at 48h from now)
+  DateTime? get adFreeUntil {
+    final ms = _prefs.getInt(keyAdFreeUntilMs);
+    if (ms == null || ms <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  bool get isAdFreeActive {
+    final until = adFreeUntil;
+    return until != null && until.isAfter(DateTime.now());
+  }
+
+  Duration get adFreeRemaining {
+    final until = adFreeUntil;
+    if (until == null) return Duration.zero;
+    final diff = until.difference(DateTime.now());
+    return diff.isNegative ? Duration.zero : diff;
+  }
+
+  Future<DateTime> grantAdFreePass({
+    Duration duration = const Duration(hours: 24),
+  }) async {
+    final now = DateTime.now();
+    final current = adFreeUntil;
+    final base = (current != null && current.isAfter(now)) ? current : now;
+    final maxAllowed = now.add(const Duration(hours: 48));
+    final candidate = base.add(duration);
+    final updated = candidate.isAfter(maxAllowed) ? maxAllowed : candidate;
+    await _prefs.setInt(keyAdFreeUntilMs, updated.millisecondsSinceEpoch);
+    return updated;
   }
 
   Future<void> clearAllSettings() async {

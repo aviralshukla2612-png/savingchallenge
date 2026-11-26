@@ -6,14 +6,87 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/ad_service.dart';
 import '../../../core/utils/export_import_helper.dart';
 
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  bool _isLoadingRewardedAd = false;
+
+  Future<void> _watchRewardedAdForAdFreePass() async {
+    if (_isLoadingRewardedAd) return;
+    setState(() => _isLoadingRewardedAd = true);
+
+    final result = await AdService.showRewardedAd(
+      onEarnedReward: (_) async {
+        await ref.read(adFreePassProvider.notifier).grant24HourPass();
+        final db = ref.read(databaseProvider);
+        await db.unlockAchievement(
+          'ad_supporter',
+          'App Supporter',
+          'Watched a rewarded video to support Saving Challenge.',
+        );
+        ref.invalidate(achievementsStreamProvider);
+      },
+    );
+
+    if (!mounted) return;
+    setState(() => _isLoadingRewardedAd = false);
+
+    switch (result) {
+      case RewardedAdResult.rewarded:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ad-Free Pass active for 24 hours! App Supporter badge unlocked.',
+            ),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        break;
+      case RewardedAdResult.dismissedWithoutReward:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Watch the full video to unlock the 24-hour Ad-Free Pass.',
+            ),
+          ),
+        );
+        break;
+      case RewardedAdResult.unavailable:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Rewarded video is unavailable right now. Check your internet connection and try again.',
+            ),
+          ),
+        );
+        break;
+      case RewardedAdResult.unsupported:
+        break;
+    }
+  }
+
+  String _formatRemainingPass(DateTime until) {
+    final diff = until.difference(DateTime.now());
+    if (diff <= Duration.zero) return 'Expired';
+    final hours = diff.inHours;
+    final minutes = diff.inMinutes.remainder(60);
+    if (hours > 0) {
+      return '${hours}h ${minutes}m remaining';
+    }
+    return '${minutes.clamp(1, 59)}m remaining';
+  }
 
   Future<void> _exportJson(BuildContext context, WidgetRef ref) async {
     final db = ref.read(databaseProvider);
@@ -123,9 +196,11 @@ class SettingsScreen extends ConsumerWidget {
         await db.clearAllData();
         final prefs = ref.read(preferencesServiceProvider);
         await prefs.clearAllSettings();
+        ref.read(adFreePassProvider.notifier).refresh();
 
         ref.invalidate(challengesStreamProvider);
         ref.invalidate(savingEntriesStreamProvider);
+        ref.invalidate(achievementsStreamProvider);
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -137,9 +212,12 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final prefs = ref.watch(preferencesServiceProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final adFreeUntil = ref.watch(adFreePassProvider);
+    final isAdFreeActive =
+        adFreeUntil != null && adFreeUntil.isAfter(DateTime.now());
     final currentCurrencyCode = prefs.currencyCode;
     final theme = Theme.of(context);
 
@@ -202,6 +280,63 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 24),
+
+            if (AdService.isSupported) ...[
+              // Rewards & Ad-Free Pass Card (Opt-in Rewarded Ad)
+              Text(
+                'Rewards & Support',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              AppCard(
+                padding: EdgeInsets.zero,
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  leading: CircleAvatar(
+                    backgroundColor: (isAdFreeActive
+                            ? AppColors.success
+                            : theme.colorScheme.primary)
+                        .withValues(alpha: 0.14),
+                    child: Icon(
+                      isAdFreeActive
+                          ? Icons.verified_rounded
+                          : Icons.play_circle_fill_rounded,
+                      color: isAdFreeActive
+                          ? AppColors.success
+                          : theme.colorScheme.primary,
+                    ),
+                  ),
+                  title: Text(
+                    isAdFreeActive
+                        ? 'Ad-Free Pass Active'
+                        : 'Remove Banner Ads (24h)',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    isAdFreeActive
+                        ? 'Banner ads hidden • ${_formatRemainingPass(adFreeUntil)}. Watch another video to extend.'
+                        : 'Watch a short video to hide banner ads for 24 hours & unlock the App Supporter badge.',
+                  ),
+                  trailing: FilledButton.tonal(
+                    onPressed: _isLoadingRewardedAd
+                        ? null
+                        : _watchRewardedAdForAdFreePass,
+                    child: _isLoadingRewardedAd
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(isAdFreeActive ? 'Extend' : 'Watch Ad'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
 
             // Data Management Card
             Text('Data & Backup', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),

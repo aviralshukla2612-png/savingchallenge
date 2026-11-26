@@ -76,6 +76,36 @@ final currencyCodeProvider = Provider<String>((ref) {
   return prefs.currencyCode;
 });
 
+// Ad-Free Rewarded Pass Notifier
+class AdFreePassNotifier extends StateNotifier<DateTime?> {
+  final PreferencesService _prefs;
+
+  AdFreePassNotifier(this._prefs) : super(_prefs.adFreeUntil);
+
+  bool get isActive {
+    final until = state;
+    return until != null && until.isAfter(DateTime.now());
+  }
+
+  Future<DateTime> grant24HourPass() async {
+    final updated = await _prefs.grantAdFreePass(
+      duration: const Duration(hours: 24),
+    );
+    state = updated;
+    return updated;
+  }
+
+  void refresh() {
+    state = _prefs.adFreeUntil;
+  }
+}
+
+final adFreePassProvider =
+    StateNotifierProvider<AdFreePassNotifier, DateTime?>((ref) {
+  final prefs = ref.watch(preferencesServiceProvider);
+  return AdFreePassNotifier(prefs);
+});
+
 // Database Reactive Streams
 final challengesStreamProvider = StreamProvider<List<Challenge>>((ref) {
   return ref.watch(databaseProvider).watchAllChallenges();

@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'Saving Challenge';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '1.0.5';
 
   // Frequencies
   static const String freqDaily = 'daily';
@@ -105,6 +105,12 @@ class AppAchievements {
       title: '₹50,000 Saved',
       description: 'Reached ₹50,000 total savings.',
       iconName: 'military_tech',
+    ),
+    AchievementDef(
+      key: 'ad_supporter',
+      title: 'App Supporter',
+      description: 'Watched a rewarded video to support Saving Challenge.',
+      iconName: 'favorite',
     ),
   ];
 }
